@@ -707,6 +707,7 @@ public:
     ((void (*)(id, SEL, id))objc_msgSend)(m_window, "makeKeyAndOrderFront:"_sel,
                                           nullptr);
   }
+
   ~cocoa_wkwebview_engine() { close(); }
   void *window() { return (void *)m_window; }
   void terminate() {
@@ -714,6 +715,146 @@ public:
     ((void (*)(id, SEL, id))objc_msgSend)("NSApp"_cls, "terminate:"_sel,
                                           nullptr);
   }
+
+  // rescued from: https://github.com/webview/webview/pull/237/commits/f65993eb4c5f2ed382dd58858bc9a480b3df3837
+
+  // same as _str macro above
+  static id get_nsstring(const char *c_str) {
+    return objc_msgSend((id)objc_getClass("NSString"),
+                        sel_registerName("stringWithUTF8String:"), c_str);
+  }
+
+  static id create_menu_item(
+    const char *title,
+    const char *action,
+    const char *key) {
+    id item = objc_msgSend("NSMenuItem"_cls, "alloc"_sel);
+    objc_msgSend(
+      item,
+      "initWithTitle:action:keyEquivalent:"_sel,
+      get_nsstring(title),
+      sel_registerName(action),
+      get_nsstring(key)
+    );
+    objc_msgSend(item, "autorelease"_sel);
+    return item;
+ }
+
+ // currently requires compiling with OBJC_OLD_DISPATCH_PROTOTYPES
+ // but this is probably possible to fix, if I follow the style from the rest
+ // of the project in this function here. Will take a bit of thinking.
+
+  void setup_menubar() {
+
+    // Create menubar
+
+    id menubar = objc_msgSend("NSMenu"_cls, "alloc"_sel);
+    objc_msgSend(menubar, "initWithTitle:"_sel, ""_str);
+    objc_msgSend(menubar, "autorelease"_sel);
+
+    // Application menu
+
+    id app_menu_item = objc_msgSend("NSMenuItem"_cls, "alloc"_sel);
+    objc_msgSend(
+      app_menu_item,
+      "initWithTitle:action:keyEquivalent:"_sel,
+      "Robin's App"_str,
+      NULL,
+      ""_str
+    );
+
+    id app_menu = objc_msgSend("NSMenu"_cls, "alloc"_sel);
+    objc_msgSend(
+      app_menu,
+      "initWithTitle:"_sel,
+      "Robin's app"_str
+    );
+
+    objc_msgSend(app_menu, "autorelease"_sel);
+    objc_msgSend(app_menu_item, "setSubmenu:"_sel, app_menu);
+    objc_msgSend(menubar, "addItem:"_sel, app_menu_item);
+
+    id item = create_menu_item(
+      "Hide APP",
+      "hide:",
+      "h"
+    );
+    objc_msgSend(app_menu, "addItem:"_sel, item);
+
+    item = create_menu_item(
+      "Hide Others",
+      "hideOtherApplications:",
+      "h"
+    );
+    objc_msgSend(app_menu, "addItem:"_sel, item);
+
+    item = create_menu_item(
+      "Show All",
+      "unhideAllApplications:",
+      ""
+    );
+    objc_msgSend(app_menu, "addItem:"_sel, item);
+
+    objc_msgSend(
+      app_menu,
+      "addItem:"_sel,
+      objc_msgSend("NSMenuItem"_cls, "separatorItem"_sel)
+    );
+
+    item = create_menu_item(
+      "Preferences",
+      nullptr,
+      ""
+    );
+    objc_msgSend(app_menu, "addItem:"_sel, item);
+
+    item = create_menu_item(
+      "Quit APP",
+      "terminate:",
+      "q"
+    );
+    objc_msgSend(app_menu, "addItem:"_sel, item);
+
+    id edit_menu_item = objc_msgSend("NSMenuItem"_cls, "alloc"_sel);
+    objc_msgSend(
+      edit_menu_item,
+      "initWithTitle:action:keyEquivalent:"_sel,
+      get_nsstring("Edit"),
+      NULL,
+      get_nsstring("")
+    );
+
+    // Edit menu
+
+    id edit_menu = objc_msgSend("NSMenu"_cls, sel_registerName("alloc"));
+    objc_msgSend(edit_menu, "initWithTitle:"_sel, get_nsstring("Edit"));
+    objc_msgSend(edit_menu, "autorelease"_sel);
+
+    objc_msgSend(edit_menu_item, "setSubmenu:"_sel, edit_menu);
+    objc_msgSend(menubar, "addItem:"_sel, edit_menu_item);
+
+    item = create_menu_item("Cut", "cut:", "x");
+    objc_msgSend(edit_menu, "addItem:"_sel, item);
+
+    item = create_menu_item("Copy", "copy:", "c");
+    objc_msgSend(edit_menu, "addItem:"_sel, item);
+
+    item = create_menu_item("Paste", "paste:", "v");
+    objc_msgSend(edit_menu, "addItem:"_sel, item);
+
+    item = create_menu_item("Select All", "selectAll:", "a");
+    objc_msgSend(edit_menu, "addItem:"_sel, item);
+
+    // Finalize
+
+    objc_msgSend(
+      objc_msgSend("NSApplication"_cls, "sharedApplication"_sel),
+      "setMainMenu:"_sel,
+      menubar
+    );
+
+  }
+
   void run() {
     id app = ((id(*)(id, SEL))objc_msgSend)("NSApplication"_cls,
                                             "sharedApplication"_sel);
@@ -721,8 +862,12 @@ public:
       ((void (*)(id, SEL, BOOL))objc_msgSend)(
           app, "activateIgnoringOtherApps:"_sel, 1);
     });
+
+    setup_menubar();
+
     ((void (*)(id, SEL))objc_msgSend)(app, "run"_sel);
   }
+
   void dispatch(std::function<void()> f) {
     dispatch_async_f(dispatch_get_main_queue(), new dispatch_fn_t(f),
                      (dispatch_function_t)([](void *arg) {
@@ -731,12 +876,14 @@ public:
                        delete f;
                      }));
   }
+
   void set_title(const std::string title) {
     ((void (*)(id, SEL, id))objc_msgSend)(
         m_window, "setTitle:"_sel,
         ((id(*)(id, SEL, const char *))objc_msgSend)(
             "NSString"_cls, "stringWithUTF8String:"_sel, title.c_str()));
   }
+
   void set_size(int width, int height, int hints) {
     auto style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                  NSWindowStyleMaskMiniaturizable;
@@ -759,6 +906,7 @@ public:
     }
     ((void (*)(id, SEL))objc_msgSend)(m_window, "center"_sel);
   }
+
   void navigate(const std::string url) {
     auto nsurl = ((id(*)(id, SEL, id))objc_msgSend)(
         "NSURL"_cls, "URLWithString:"_sel,
@@ -770,6 +918,7 @@ public:
         ((id(*)(id, SEL, id))objc_msgSend)("NSURLRequest"_cls,
                                            "requestWithURL:"_sel, nsurl));
   }
+
   void init(const std::string js) {
     // Equivalent Obj-C:
     // [m_manager addUserScript:[[WKUserScript alloc] initWithSource:[NSString stringWithUTF8String:js.c_str()] injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]]
@@ -782,6 +931,7 @@ public:
                 "NSString"_cls, "stringWithUTF8String:"_sel, js.c_str()),
             WKUserScriptInjectionTimeAtDocumentStart, 1));
   }
+
   void eval(const std::string js) {
     ((void (*)(id, SEL, id, id))objc_msgSend)(
         m_webview, "evaluateJavaScript:completionHandler:"_sel,

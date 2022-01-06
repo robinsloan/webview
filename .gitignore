@@ -1,4 +1,5 @@
 # Build atrifacts
+.DS_Store
 /build
 webview
 webview_test
