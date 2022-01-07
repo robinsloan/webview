@@ -680,6 +680,17 @@ public:
                                              "numberWithBool:"_sel, 1),
         "javaScriptCanAccessClipboard"_str);
 
+    /*
+    // webViewConfiguration.limitsNavigationsToAppBoundDomains = YES;
+    // https://webkit.org/blog/10882/app-bound-domains/
+    ((id(*)(id, SEL, id, id))objc_msgSend)(
+        ((id(*)(id, SEL))objc_msgSend)(config, "preferences"_sel),
+        "setValue:forKey:"_sel,
+        ((id(*)(id, SEL, BOOL))objc_msgSend)("NSNumber"_cls,
+                                             "numberWithBool:"_sel, 1),
+        "limitsNavigationsToAppBoundDomains"_str);
+    */
+
     // Equivalent Obj-C:
     // [[config preferences] setValue:@YES forKey:@"DOMPasteAllowed"];
     ((id(*)(id, SEL, id, id))objc_msgSend)(
@@ -819,6 +830,10 @@ public:
 
     item = create_menu_item("Select All", "selectAll:", "a");
     ((id(*)(id, SEL, id))objc_msgSend)(edit_menu, "addItem:"_sel, item);
+
+    // ADD VIEW MENU
+
+    // With zoom functions
 
     // A C T I O N S
     // RS: This is where you can register new action selectors.
