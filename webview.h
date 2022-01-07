@@ -21,6 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 #ifndef WEBVIEW_H
 #define WEBVIEW_H
 
@@ -624,13 +625,13 @@ public:
                           "UTF8String"_sel));
                     }),
                     "v@:@@");
+
     objc_registerClassPair(cls);
 
     auto delegate = ((id(*)(id, SEL))objc_msgSend)((id)cls, "new"_sel);
     objc_setAssociatedObject(delegate, "webview", (id)this,
                              OBJC_ASSOCIATION_ASSIGN);
-    ((void (*)(id, SEL, id))objc_msgSend)(app, sel_registerName("setDelegate:"),
-                                          delegate);
+    ((void (*)(id, SEL, id))objc_msgSend)(app, "setDelegate:"_sel, delegate);
 
     // Main window
     if (window == nullptr) {
@@ -695,13 +696,18 @@ public:
         m_manager, "addScriptMessageHandler:name:"_sel, delegate,
         "external"_str);
 
+    // note: foo( ... )foo is C++'s delimiter for tricky strings
     init(R"script(
-                      window.external = {
-                        invoke: function(s) {
-                          window.webkit.messageHandlers.external.postMessage(s);
-                        },
-                      };
-                     )script");
+      window.external = {
+        invoke: function(s) {
+          window.webkit.messageHandlers.external.postMessage(s);
+        },
+      };
+     )script");
+
+    // Not sure if this is the best place for this, but it seems to work:
+    setup_menubar();
+
     ((void (*)(id, SEL, id))objc_msgSend)(m_window, "setContentView:"_sel,
                                           m_webview);
     ((void (*)(id, SEL, id))objc_msgSend)(m_window, "makeKeyAndOrderFront:"_sel,
@@ -716,143 +722,145 @@ public:
                                           nullptr);
   }
 
-  // rescued from: https://github.com/webview/webview/pull/237/commits/f65993eb4c5f2ed382dd58858bc9a480b3df3837
-
-  // same as _str macro above
+  // same as the _str macro way up above
   static id get_nsstring(const char *c_str) {
-    return objc_msgSend((id)objc_getClass("NSString"),
-                        sel_registerName("stringWithUTF8String:"), c_str);
+    return ((id(*)(id, SEL, const char *))objc_msgSend)(
+        "NSString"_cls, "stringWithUTF8String:"_sel, c_str);
   }
 
-  static id create_menu_item(
-    const char *title,
-    const char *action,
-    const char *key) {
-    id item = objc_msgSend("NSMenuItem"_cls, "alloc"_sel);
-    objc_msgSend(
-      item,
-      "initWithTitle:action:keyEquivalent:"_sel,
-      get_nsstring(title),
-      sel_registerName(action),
-      get_nsstring(key)
-    );
-    objc_msgSend(item, "autorelease"_sel);
+  static id create_menu_item(const char *title, const char *action,
+                             const char *key) {
+    id item = ((id(*)(id, SEL))objc_msgSend)("NSMenuItem"_cls, "alloc"_sel);
+    ((id(*)(id, SEL, id, SEL, id))objc_msgSend)(
+        item, "initWithTitle:action:keyEquivalent:"_sel, get_nsstring(title),
+        sel_registerName(action), get_nsstring(key));
+    ((id(*)(id, SEL))objc_msgSend)(item, "autorelease"_sel);
     return item;
- }
+  }
 
- // currently requires compiling with OBJC_OLD_DISPATCH_PROTOTYPES
- // but this is probably possible to fix, if I follow the style from the rest
- // of the project in this function here. Will take a bit of thinking.
+  // OK I did it. I changed it to the new ugly way of calling objc_msgSend.
+  // lots of details here: https://www.mikeash.com/pyblog/objc_msgsends-new-prototype.html
+  // Thanks, I hate it!
+  // Learned from examples of translations in this pull:
+  // https://github.com/webview/webview/pull/432/files
+  // eesh
+
+  // rescued from: https://github.com/webview/webview/pull/237/commits/f65993eb4c5f2ed382dd58858bc9a480b3df3837
 
   void setup_menubar() {
-
     // Create menubar
 
-    id menubar = objc_msgSend("NSMenu"_cls, "alloc"_sel);
-    objc_msgSend(menubar, "initWithTitle:"_sel, ""_str);
-    objc_msgSend(menubar, "autorelease"_sel);
+    id menubar = ((id(*)(id, SEL))objc_msgSend)("NSMenu"_cls, "alloc"_sel);
+    ((id(*)(id, SEL, id))objc_msgSend)(menubar, "initWithTitle:"_sel, ""_str);
+    ((id(*)(id, SEL))objc_msgSend)(menubar, "autorelease"_sel);
 
     // Application menu
 
-    id app_menu_item = objc_msgSend("NSMenuItem"_cls, "alloc"_sel);
-    objc_msgSend(
-      app_menu_item,
-      "initWithTitle:action:keyEquivalent:"_sel,
-      "Robin's App"_str,
-      NULL,
-      ""_str
-    );
+    id app_menu_item =
+        ((id(*)(id, SEL))objc_msgSend)("NSMenuItem"_cls, "alloc"_sel);
+    ((id(*)(id, SEL, id, SEL, id))objc_msgSend)(
+        app_menu_item, "initWithTitle:action:keyEquivalent:"_sel,
+        "Robin's App"_str, NULL, ""_str);
 
-    id app_menu = objc_msgSend("NSMenu"_cls, "alloc"_sel);
-    objc_msgSend(
-      app_menu,
-      "initWithTitle:"_sel,
-      "Robin's app"_str
-    );
+    id app_menu = ((id(*)(id, SEL))objc_msgSend)("NSMenu"_cls, "alloc"_sel);
+    ((id(*)(id, SEL, id))objc_msgSend)(app_menu, "initWithTitle:"_sel,
+                                       "Robin's app"_str);
 
-    objc_msgSend(app_menu, "autorelease"_sel);
-    objc_msgSend(app_menu_item, "setSubmenu:"_sel, app_menu);
-    objc_msgSend(menubar, "addItem:"_sel, app_menu_item);
+    ((id(*)(id, SEL))objc_msgSend)(app_menu, "autorelease"_sel);
+    ((id(*)(id, SEL, id))objc_msgSend)(app_menu_item, "setSubmenu:"_sel,
+                                       app_menu);
+    ((id(*)(id, SEL, id))objc_msgSend)(menubar, "addItem:"_sel, app_menu_item);
 
-    id item = create_menu_item(
-      "Hide APP",
-      "hide:",
-      "h"
-    );
-    objc_msgSend(app_menu, "addItem:"_sel, item);
+    id item = create_menu_item("Hide APP", "hide:", "h");
+    ((id(*)(id, SEL, id))objc_msgSend)(app_menu, "addItem:"_sel, item);
 
-    item = create_menu_item(
-      "Hide Others",
-      "hideOtherApplications:",
-      "h"
-    );
-    objc_msgSend(app_menu, "addItem:"_sel, item);
+    item = create_menu_item("Hide Others", "hideOtherApplications:", "h");
+    ((id(*)(id, SEL, id))objc_msgSend)(app_menu, "addItem:"_sel, item);
 
-    item = create_menu_item(
-      "Show All",
-      "unhideAllApplications:",
-      ""
-    );
-    objc_msgSend(app_menu, "addItem:"_sel, item);
+    item = create_menu_item("Show All", "unhideAllApplications:", "");
+    ((id(*)(id, SEL, id))objc_msgSend)(app_menu, "addItem:"_sel, item);
 
-    objc_msgSend(
-      app_menu,
-      "addItem:"_sel,
-      objc_msgSend("NSMenuItem"_cls, "separatorItem"_sel)
-    );
+    ((id(*)(id, SEL, id))objc_msgSend)(
+        app_menu, "addItem:"_sel,
+        ((id(*)(id, SEL))objc_msgSend)("NSMenuItem"_cls, "separatorItem"_sel));
 
-    item = create_menu_item(
-      "Preferences",
-      nullptr,
-      ""
-    );
-    objc_msgSend(app_menu, "addItem:"_sel, item);
+    // Saving this one because we want to attach a delegate.
+    id prefs_item = create_menu_item("Settings", "openSettings", ";");
+    ((id(*)(id, SEL, id))objc_msgSend)(app_menu, "addItem:"_sel, prefs_item);
 
-    item = create_menu_item(
-      "Quit APP",
-      "terminate:",
-      "q"
-    );
-    objc_msgSend(app_menu, "addItem:"_sel, item);
+    item = create_menu_item("Quit APP", "terminate:", "q");
+    ((id(*)(id, SEL, id))objc_msgSend)(app_menu, "addItem:"_sel, item);
 
-    id edit_menu_item = objc_msgSend("NSMenuItem"_cls, "alloc"_sel);
-    objc_msgSend(
-      edit_menu_item,
-      "initWithTitle:action:keyEquivalent:"_sel,
-      get_nsstring("Edit"),
-      NULL,
-      get_nsstring("")
-    );
+    id edit_menu_item =
+        ((id(*)(id, SEL))objc_msgSend)("NSMenuItem"_cls, "alloc"_sel);
+    ((id(*)(id, SEL, id, SEL, id))objc_msgSend)(
+        edit_menu_item, "initWithTitle:action:keyEquivalent:"_sel,
+        get_nsstring("Edit"), NULL, get_nsstring(""));
 
     // Edit menu
 
-    id edit_menu = objc_msgSend("NSMenu"_cls, sel_registerName("alloc"));
-    objc_msgSend(edit_menu, "initWithTitle:"_sel, get_nsstring("Edit"));
-    objc_msgSend(edit_menu, "autorelease"_sel);
+    id edit_menu = ((id(*)(id, SEL))objc_msgSend)("NSMenu"_cls, "alloc"_sel);
+    ((id(*)(id, SEL, id))objc_msgSend)(edit_menu, "initWithTitle:"_sel,
+                                       "Edit"_str);
+    ((id(*)(id, SEL))objc_msgSend)(edit_menu, "autorelease"_sel);
 
-    objc_msgSend(edit_menu_item, "setSubmenu:"_sel, edit_menu);
-    objc_msgSend(menubar, "addItem:"_sel, edit_menu_item);
+    ((id(*)(id, SEL, id))objc_msgSend)(edit_menu_item, "setSubmenu:"_sel,
+                                       edit_menu);
+    ((id(*)(id, SEL, id))objc_msgSend)(menubar, "addItem:"_sel, edit_menu_item);
 
     item = create_menu_item("Cut", "cut:", "x");
-    objc_msgSend(edit_menu, "addItem:"_sel, item);
+    ((id(*)(id, SEL, id))objc_msgSend)(edit_menu, "addItem:"_sel, item);
 
     item = create_menu_item("Copy", "copy:", "c");
-    objc_msgSend(edit_menu, "addItem:"_sel, item);
+    ((id(*)(id, SEL, id))objc_msgSend)(edit_menu, "addItem:"_sel, item);
 
     item = create_menu_item("Paste", "paste:", "v");
-    objc_msgSend(edit_menu, "addItem:"_sel, item);
+    ((id(*)(id, SEL, id))objc_msgSend)(edit_menu, "addItem:"_sel, item);
 
     item = create_menu_item("Select All", "selectAll:", "a");
-    objc_msgSend(edit_menu, "addItem:"_sel, item);
+    ((id(*)(id, SEL, id))objc_msgSend)(edit_menu, "addItem:"_sel, item);
+
+    // A C T I O N S
+    // RS: This is where you can register new action selectors.
+
+    // This is the class of the MenuDelegate
+    auto mdc =
+        objc_allocateClassPair((Class) "NSResponder"_cls, "MenuDelegate", 0);
+    class_addMethod(mdc, "openSettings"_sel, (IMP)(+[](id self, SEL) {
+                      auto w =
+                          (cocoa_wkwebview_engine *)objc_getAssociatedObject(
+                              self, "webview");
+                      assert(w);
+                      w->eval("console.log('prefs launch!');");
+                    }),
+                    "v@:");
+    // that last bit means:
+    // "return void, first arg self, second arg selector"
+    // see: https://developer.apple.com/documentation/foundation/nsmethodsignature
+
+    objc_registerClassPair(mdc);
+
+    // This is the actual delegate object
+    auto menu_delegate = ((id(*)(id, SEL))objc_msgSend)((id)mdc, "new"_sel);
+
+    // This is the Dark Arts
+    objc_setAssociatedObject(menu_delegate, "webview", (id)this,
+                             OBJC_ASSOCIATION_ASSIGN);
+
+    // This links the prefs menu item to the delegate,
+    // so it can call methods on it.
+    ((id(*)(id, SEL, id))objc_msgSend)(prefs_item, "setTarget:"_sel,
+                                       menu_delegate);
+
+    // ... whew ...
 
     // Finalize
 
-    objc_msgSend(
-      objc_msgSend("NSApplication"_cls, "sharedApplication"_sel),
-      "setMainMenu:"_sel,
-      menubar
-    );
-
+    // This is a bruiser
+    ((id(*)(id, SEL, id))objc_msgSend)(
+        ((id(*)(id, SEL))objc_msgSend)("NSApplication"_cls,
+                                       "sharedApplication"_sel),
+        "setMainMenu:"_sel, menubar);
   }
 
   void run() {
@@ -863,7 +871,7 @@ public:
           app, "activateIgnoringOtherApps:"_sel, 1);
     });
 
-    setup_menubar();
+    // setup_menubar();
 
     ((void (*)(id, SEL))objc_msgSend)(app, "run"_sel);
   }
@@ -907,6 +915,7 @@ public:
     ((void (*)(id, SEL))objc_msgSend)(m_window, "center"_sel);
   }
 
+  // TODO: enable direct loading of local file?
   void navigate(const std::string url) {
     auto nsurl = ((id(*)(id, SEL, id))objc_msgSend)(
         "NSURL"_cls, "URLWithString:"_sel,
